@@ -13,6 +13,7 @@ class Simulation:
         self.boundaries = Boundaries(project)
         self.mesh = Mesh(project)
         self.solver = Solver(project)
+        self.results = Results(project)
 
     def run(self):
         """
@@ -546,4 +547,120 @@ class FrequencyDomainSolver:
     def __init__(self, project):
         self.project = project
 
-    
+# ==================================================================
+# RESULTS CLASS
+# ==================================================================
+class Results:
+    def __init__(self, project):
+        self.project = project
+
+    def _open_project_file(self, cst_file=None):
+        """
+        Opens the CST project file for result reading.
+        cst.results is file-based: it reads from a saved .cst file.
+        If no path is given, it tries to derive it from the live project.
+        """
+        if cst_file is None:
+            cst_file = self.project.filename()
+        return cst.results.ProjectFile(cst_file, allow_interactive=True)
+
+    def get_s_parameters(self, cst_file=None, run_id=0, magnitude="complex", AR_filter: bool = False):
+        """
+        Reads all available S-parameters from the CST project file and returns
+        them as a pandas DataFrame.
+
+        Parameters
+        ----------
+        cst_file : str or Path, optional
+            Path to the .cst project file. If omitted, uses the current
+            project's filename (requires the project to have been saved first).
+        run_id : int, optional
+            The run id to retrieve. Use 0 (default) for non-parametric runs.
+            For parametric sweeps, use get_run_ids() to discover valid ids.
+        magnitude : str, optional
+            Format of the S-parameter values in the DataFrame columns:
+            - "complex"  : raw complex values (default)
+            - "db"       : magnitude in dB  (20*log10(|S|))
+            - "mag"      : linear magnitude (|S|)
+            - "both"     : adds both 'db' and 'mag' columns alongside 'complex'
+
+        Returns
+        -------
+        pd.DataFrame
+            Index   : frequency (in the unit reported by CST, typically GHz)
+            Columns : one column per S-parameter found, e.g. "S1,1", "S2,1"
+                      with the requested magnitude format.
+                      If magnitude="both", columns are e.g. "S1,1_complex",
+                      "S1,1_db", "S1,1_mag".
+
+        Example
+        -------
+        df = simulation.results.get_s_parameters()
+        df = simulation.results.get_s_parameters(magnitude="db")
+        df = simulation.results.get_s_parameters(r"C:/projects/my_design.cst", run_id=2)
+        """
+        import math
+
+        prj_file  = self._open_project_file(cst_file)
+        module_3d = prj_file.get_3d()
+
+        # Discover all S-parameter tree items automatically
+        if AR_filter:
+            all_items  = module_3d.get_tree_items(filter="0D/1D")
+            s_items    = [t for t in all_items if r"1D Results\S-Parameters (AR)\S" in t]
+        else:
+            all_items  = module_3d.get_tree_items(filter="0D/1D")
+            s_items    = [t for t in all_items if r"1D Results\S-Parameters\S" in t]
+
+        if not s_items:
+            raise RuntimeError(
+                "No S-parameter results found in the project. "
+                "Make sure the solver has been run and the project saved."
+            )
+
+        data      = {}   # { s_label : {freq: value} }
+        freq_axis = None
+
+        for treepath in s_items:
+            # treepath example: r"1D Results\S-Parameters\S1,1"
+            s_label = treepath.split("\\")[-1]   # → "S1,1"
+
+            result    = module_3d.get_result_item(treepath, run_id=run_id)
+            freqs     = result.get_xdata()        # list of floats
+            raw_data  = result.get_data()         # list of (freq, S_complex, Zref_complex)
+
+            if freq_axis is None:
+                freq_axis = freqs
+
+            # Extract the complex S value from each tuple
+            s_complex = [row[1] for row in raw_data]
+
+            if magnitude == "complex":
+                data[s_label] = dict(zip(freqs, s_complex))
+
+            elif magnitude == "db":
+                data[s_label] = {
+                    f: 20 * math.log10(abs(s)) if abs(s) > 0 else float("-inf")
+                    for f, s in zip(freqs, s_complex)
+                }
+
+            elif magnitude == "mag":
+                data[s_label] = {f: abs(s) for f, s in zip(freqs, s_complex)}
+
+            elif magnitude == "both":
+                data[f"{s_label}_complex"] = dict(zip(freqs, s_complex))
+                data[f"{s_label}_db"] = {
+                    f: 20 * math.log10(abs(s)) if abs(s) > 0 else float("-inf")
+                    for f, s in zip(freqs, s_complex)
+                }
+                data[f"{s_label}_mag"] = {f: abs(s) for f, s in zip(freqs, s_complex)}
+
+            else:
+                raise ValueError(
+                    f"Unknown magnitude format '{magnitude}'. "
+                    "Choose from: 'complex', 'db', 'mag', 'both'."
+                )
+
+        df = pd.DataFrame(data, index=freq_axis)
+        df.index.name = result.xlabel   # e.g. "Frequency / GHz"
+        return df  

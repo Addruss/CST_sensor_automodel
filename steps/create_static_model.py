@@ -1,7 +1,10 @@
-def create_static_geometry(model, board_w_mm, board_l_mm, substract_h_mm, TL_w_mm, metallization_t_mm):
+def define_materials(model):
     model.material.rogers_ro4003c()
     model.material.copper()
+    model.material.silicon_lossy()
+    model.material.water()
 
+def create_static_geometry(model, board_w_mm, board_l_mm, substract_h_mm, TL_w_mm, metallization_t_mm):
     # Substrate
     model.geometry.brick(
         name="substract", component="sensor",

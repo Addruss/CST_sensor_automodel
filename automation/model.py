@@ -43,6 +43,70 @@ End With
             history_list
         )
 
+    def cylinder(
+        self,
+        name,
+        component,
+        material,
+        outer_radius,
+        inner_radius=0,
+        axis="z",
+        axis_min=0,
+        axis_max=10,
+        center_1=0,
+        center_2=0,
+        segments=0
+    ):
+        """
+        Create a cylinder or hollow cylinder aligned along a specified axis.
+        
+        Args:
+            name: Name of the cylinder
+            component: Component name
+            material: Material name
+            outer_radius: Outer radius of the cylinder
+            inner_radius: Inner radius (0 for solid cylinder, default=0)
+            axis: Axis alignment ('x', 'y', or 'z', default='z')
+            axis_min: Start position along the axis
+            axis_max: End position along the axis
+            center_1: Center position for the first perpendicular axis
+            center_2: Center position for the second perpendicular axis
+            segments: Number of segments (0 for automatic, default=0)
+        """
+        # Determine axis-specific parameters
+        axis_lower = axis.lower()
+        if axis_lower == "x":
+            axis_range = f'.Xrange "{axis_min}", "{axis_max}"'
+            center_params = f'.Ycenter "{center_1}"\n     .Zcenter "{center_2}"'
+        elif axis_lower == "y":
+            axis_range = f'.Yrange "{axis_min}", "{axis_max}"'
+            center_params = f'.Xcenter "{center_1}"\n     .Zcenter "{center_2}"'
+        elif axis_lower == "z":
+            axis_range = f'.Zrange "{axis_min}", "{axis_max}"'
+            center_params = f'.Xcenter "{center_1}"\n     .Ycenter "{center_2}"'
+        else:
+            raise ValueError(f"Invalid axis: {axis}. Must be 'x', 'y', or 'z'.")
+
+        history_list = f"""
+With Cylinder
+     .Reset
+     .Name "{name}"
+     .Component "{component}"
+     .Material "{material}"
+     .OuterRadius "{outer_radius}"
+     .InnerRadius "{inner_radius}"
+     .Axis "{axis_lower}"
+     {axis_range}
+     {center_params}
+     .Segments "{segments}"
+     .Create
+End With
+"""
+        self.project.model3d.add_to_history(
+            f"Python: Create Cylinder {name}",
+            history_list
+        )
+
     def delete_solid(self, component_name, solid_name):
         history = f"""
 Solid.Delete "{component_name}:{solid_name}"
@@ -273,6 +337,50 @@ End With
             colour_r=1,
             colour_g=1,
             colour_b=0
+        )
+
+    def silicon_lossy(self):
+        self.create_normal(
+            name="Silicon (lossy)",
+            epsilon=11.9,
+            mu=1.0,
+            kappa=2.5e-004,
+            kappa_m=0.0,
+            tand=0.00,
+            tand_freq=0.0,
+            tand_given=False,
+            tand_model="ConstTanD",
+            tand_m=0.0,
+            tand_m_freq=0.0,
+            tand_m_given=False,
+            tand_m_model="ConstKappa",
+            rho=2330.0,
+            thermal_conductivity=148,
+            colour_r=0.94,
+            colour_g=0.82,
+            colour_b=0.76
+        )
+
+    def water(self):
+        self.create_normal(
+            name="Water",
+            epsilon=78,
+            mu=1.0,
+            kappa=1.59,
+            kappa_m=0,
+            tand=0.0,
+            tand_freq=0.0,
+            tand_given=False,
+            tand_model="ConstTanD",
+            tand_m=0.0,
+            tand_m_freq=0.0,
+            tand_m_given=False,
+            tand_m_model="ConstTanD",
+            rho=1000,
+            thermal_conductivity=0.6,
+            colour_r=0,
+            colour_g=0,
+            colour_b=1
         )
 
 
